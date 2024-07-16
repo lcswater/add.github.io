@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>班級加分系統</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #FFF3E0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            width: 85%;
+            max-width: 1200px;
+            background-color: #FFFFFF;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+        h1 {
+            color: #FF9800;
+            text-align: center;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        button {
+            background-color: #FF9800;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #F57C00;
+        }
+        .student-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .student {
+            background-color: #FFE0B2;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+        .student button {
+            margin-top: 5px;
+        }
+        #studentImport {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 10px;
+        }
+        .import-section {
+            margin-top: auto;
+        }
+        @media (max-width: 600px) {
+            .controls {
+                flex-direction: column;
+            }
+            .controls button, .controls select {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>班級加分系統</h1>
+        <div class="controls">
+            <button id="addAllPoints">全班加分</button>
+            <button id="resetPoints">重置分數</button>
+            <button id="exportExcel">匯出Excel</button>
+            <select id="classSelect">
+                <option value="class1">班級1</option>
+                <option value="class2">班級2</option>
+                <option value="class3">班級3</option>
+                <option value="class4">班級4</option>
+                <option value="class5">班級5</option>
+            </select>
+        </div>
+        <div class="student-list" id="studentList"></div>
+        <div class="import-section" id="importSection">
+            <textarea id="studentImport" placeholder="輸入學生名單（每行一個學生）"></textarea>
+            <button id="importStudents">匯入學生</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.16.9/xlsx.full.min.js"></script>
+    <script>
+        let students = {};
+        let currentClass = 'class1';
+
+        function initializeStudents() {
+            ['class1', 'class2', 'class3', 'class4', 'class5'].forEach(classId => {
+                if (!students[classId]) {
+                    students[classId] = {};
+                    for (let i = 1; i <= 30; i++) {
+                        students[classId][i] = { name: `座號${i}`, points: 0 };
+                    }
+                }
+            });
+        }
+
+        function renderStudents() {
+            const studentList = document.getElementById('studentList');
+            studentList.innerHTML = '';
+            Object.entries(students[currentClass]).forEach(([id, student]) => {
+                const studentElement = document.createElement('div');
+                studentElement.className = 'student';
+                studentElement.innerHTML = `
+                    <div>${student.name} (座號${id})</div>
+                    <div>分數: <span id="points-${id}">${student.points}</span></div>
+                    <button onclick="addPoint('${id}')">加分</button>
+                `;
+                studentList.appendChild(studentElement);
+            });
+        }
+
+        function addPoint(id) {
+            students[currentClass][id].points++;
+            document.getElementById(`points-${id}`).textContent = students[currentClass][id].points;
+            saveToLocalStorage();
+        }
+
+        function addAllPoints() {
+            Object.keys(students[currentClass]).forEach(id => {
+                students[currentClass][id].points++;
+            });
+            renderStudents();
+            saveToLocalStorage();
+        }
+
+        function resetPoints() {
+            Object.keys(students[currentClass]).forEach(id => {
+                students[currentClass][id].points = 0;
+            });
+            renderStudents();
+            saveToLocalStorage();
+            showImportSection();
+        }
+
+        function exportExcel() {
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(Object.values(students[currentClass]));
+            XLSX.utils.book_append_sheet(wb, ws, currentClass);
+            XLSX.writeFile(wb, `${currentClass}_points.xlsx`);
+        }
+
+        function changeClass() {
+            currentClass = document.getElementById('classSelect').value;
+            renderStudents();
+            updateImportTextarea();
+            if (Object.keys(students[currentClass]).some(id => students[currentClass][id].name !== `座號${id}`)) {
+                hideImportSection();
+            } else {
+                showImportSection();
+            }
+        }
+
+        function importStudents() {
+            const importText = document.getElementById('studentImport').value;
+            const importedStudents = importText.split('\n').filter(name => name.trim() !== '');
+            students[currentClass] = {};
+            importedStudents.forEach((name, index) => {
+                students[currentClass][index + 1] = { name: name.trim(), points: 0 };
+            });
+            renderStudents();
+            saveToLocalStorage();
+            hideImportSection();
+        }
+
+        function updateImportTextarea() {
+            const importTextarea = document.getElementById('studentImport');
+            const numbers = Array.from({length: 30}, (_, i) => i + 1).join('\n');
+            importTextarea.value = numbers;
+        }
+
+        function hideImportSection() {
+            document.getElementById('importSection').style.display = 'none';
+        }
+
+        function showImportSection() {
+            document.getElementById('importSection').style.display = 'block';
+        }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('classPointSystem', JSON.stringify(students));
+        }
+
+        function loadFromLocalStorage() {
+            const saved = localStorage.getItem('classPointSystem');
+            if (saved) {
+                students = JSON.parse(saved);
+                initializeStudents(); // 確保所有班級都有學生
+            } else {
+                initializeStudents();
+            }
+        }
+
+        document.getElementById('addAllPoints').addEventListener('click', addAllPoints);
+        document.getElementById('resetPoints').addEventListener('click', resetPoints);
+        document.getElementById('exportExcel').addEventListener('click', exportExcel);
+        document.getElementById('classSelect').addEventListener('change', changeClass);
+        document.getElementById('importStudents').addEventListener('click', importStudents);
+
+        loadFromLocalStorage();
+        renderStudents();
+        updateImportTextarea();
+        if (Object.keys(students[currentClass]).some(id => students[currentClass][id].name !== `座號${id}`)) {
+            hideImportSection();
+        }
+    </script>
+</body>
+</html>
